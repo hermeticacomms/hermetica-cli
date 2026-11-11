@@ -1,0 +1,45 @@
+{
+  "name": "@hermeticacomms/cli",
+  "version": "0.1.0",
+  "description": "Hermetica command line: device login, config as code, sandbox sends, any API operation",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hermeticacomms/hermetica-cli.git"
+  },
+  "homepage": "https://github.com/hermeticacomms/hermetica-cli#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "hermetica": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
