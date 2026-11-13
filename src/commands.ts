@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
+import { Writable } from 'node:stream';
 import { pairs, readData } from './args.ts';
 import { type Client, makeClient } from './client.ts';
 import { loadConfig } from './config.ts';
@@ -142,8 +143,14 @@ export async function run(argv: string[], io: Io): Promise<void> {
   throw new Error(`Unknown command "${[cmd, a].filter(Boolean).join(' ')}".\n\n${HELP}`);
 }
 
-/** Reads the key from the terminal so it never lands in shell history. */
+/** Reads the key from the terminal so it never lands in shell history; the typed characters are not echoed. */
 export async function askKey(): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try { return await rl.question('API key (hm_sk_...): '); } finally { rl.close(); }
+  let muted = false;
+  const output = new Writable({ write(chunk, _enc, done) { if (!muted) process.stderr.write(chunk); done(); } });
+  const rl = createInterface({ input: process.stdin, output, terminal: Boolean(process.stdin.isTTY) });
+  try {
+    const answer = rl.question('API key (hm_sk_...): '); // the prompt is written before this returns
+    muted = true;
+    return await answer;
+  } finally { rl.close(); process.stderr.write('\n'); }
 }
