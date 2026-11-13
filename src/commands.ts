@@ -7,6 +7,7 @@ import { loadConfig } from './config.ts';
 import { login, logout, requestScopes, status, whoami } from './account.ts';
 import { planOrApply, sendSandbox } from './declare.ts';
 import { buildCall, fetchSpec, findOperation, operations } from './openapi.ts';
+import { listen } from './listen.ts';
 
 export const RESOURCES: Record<string, string> = {
   profiles: '/v1/profiles', lists: '/v1/lists', campaigns: '/v1/campaigns', sequences: '/v1/outbound/sequences', templates: '/v1/templates',
@@ -35,6 +36,7 @@ export const HELP = `hermetica <command>
   send-test campaign <id> --to a@x.com[,b@y.com]             or --data '<json>' (templates need seedListId and connectionId)
   send-test template <id> --data '<json>'
   events tail [name=<event>] [--interval 5]                  print new events as JSON lines until Ctrl-C
+  webhooks listen --forward-to <url> [--topics a,b]          forward live webhook events to a local receiver, signed like real deliveries
   export <resource> [key=value ...]                          every page as JSON lines
   openapi list [search]                                      operations of the server's OpenAPI document
   openapi <operationId> [key=value ...] [--data ...]          call any operation: path {params} first, the rest as query
@@ -78,6 +80,7 @@ export async function run(argv: string[], io: Io): Promise<void> {
       key: { type: 'string' }, url: { type: 'string' }, data: { type: 'string', short: 'd' }, to: { type: 'string' }, interval: { type: 'string' }, help: { type: 'boolean', short: 'h' },
       profile: { type: 'string' }, scopes: { type: 'string' }, paste: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' },
       sandbox: { type: 'boolean' }, outcome: { type: 'string' }, from: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' },
+      'forward-to': { type: 'string' }, topics: { type: 'string' },
     },
   });
   if (!cmd || f.help || cmd === 'help') return io.out(HELP);
@@ -124,6 +127,13 @@ export async function run(argv: string[], io: Io): Promise<void> {
       for (const e of await newEvents(client, last, query)) { io.out(JSON.stringify(e)); if (!last || e.id > last) last = e.id; }
       await io.sleep(every);
     }
+  }
+  if (cmd === 'webhooks' && a === 'listen') {
+    if (!f['forward-to']) throw new Error('Usage: hermetica webhooks listen --forward-to http://localhost:3000/webhooks [--topics profile.*,message.event]');
+    const stop = new AbortController();
+    const onInt = () => stop.abort(); // first Ctrl-C stops cleanly (the session is deleted); a second one exits at once
+    process.once('SIGINT', onInt);
+    try { return await listen(io, client, cfg, { forwardTo: f['forward-to'], topics: f.topics?.split(',').map((t) => t.trim()).filter(Boolean), signal: stop.signal }); } finally { process.off('SIGINT', onInt); }
   }
   if (cmd === 'export' && a && a in LISTABLE) {
     for await (const items of pages(client, LISTABLE[a]!, pairs([b, ...more].filter((x): x is string => !!x)))) for (const x of items) io.out(JSON.stringify(x));

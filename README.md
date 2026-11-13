@@ -37,7 +37,15 @@ Missing a scope? `hermetica scopes request connections:write --reason "connect S
 
 Topics match on `channel` + `key`, fields on `key`, lists on `name`, webhook endpoints on `url`. Only the properties written in the file are compared and changed. Nothing is deleted: `apply --prune` archives the topics, fields and lists (and disables the webhook endpoints) that a section of the file leaves out; sections not in the file are left alone. A webhook `secret` you choose is used on create, replaces the current one when it differs, and is never shown back (the plan prints `secret` only), so verify deliveries with the value from your own secret store. `senders` (`[{ "connection": "main", "fromEmail": "hello@example.com" }]`) declares From addresses per connection; the plan shows whether each is verified.
 
-## Everything else
+## Test a webhook receiver locally
+
+```sh
+hermetica webhooks listen --forward-to http://localhost:3000/api/email-events/hermetica
+hermetica webhooks listen --forward-to http://localhost:3000/hooks --topics message.status,suppression.added
+```
+
+Streams the workspace's new events and POSTs each one to `--forward-to` with the body and headers of a real delivery (`Hermetica-Signature`, `Hermetica-Event-Id`, `Hermetica-Topic`), signed with a secret printed when the session starts: set it as your receiver's webhook secret while testing. One line per event shows your receiver's status code. No retries. Ctrl-C ends the session. Needs `webhooks:write` (included in the default login scopes through `integrations:write`).
+
 
 ```sh
 hermetica profiles list email=ada@example.com
