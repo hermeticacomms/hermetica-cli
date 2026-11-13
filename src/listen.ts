@@ -27,8 +27,9 @@ export async function forwardEvent(fetchFn: typeof fetch, url: string, secret: s
 /** `event:`/`data:` blocks of a server-sent event stream. */
 export async function* sseEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<{ event: string; data: string }> {
   let buf = '';
-  for await (const chunk of body.pipeThrough(new TextDecoderStream())) {
-    buf += chunk;
+  const dec = new TextDecoder();
+  for await (const bytes of body as AsyncIterable<Uint8Array>) {
+    buf += dec.decode(bytes, { stream: true });
     for (let i = buf.indexOf('\n\n'); i >= 0; i = buf.indexOf('\n\n')) {
       const block = buf.slice(0, i);
       buf = buf.slice(i + 2);
