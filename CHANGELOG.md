@@ -4,6 +4,7 @@ Changes to `@hermeticacomms/cli`, newest first. Its version follows the Hermetic
 
 ## 0.4.0 - 2026-11-13
 
+- `webhooks listen --forward-to <url> [--topics a,b]`: forwards your workspace's webhook events to a local URL, signed like real deliveries.
 - `login --paste` no longer echoes the key as you type it.
 - The package ships this changelog.
 
