@@ -87,14 +87,29 @@ type Readiness = {
   canSend: Record<string, boolean>;
   checks: { key: string; ok: boolean; blocks: string[]; fix: string; api?: { method: string; path: string }; requiredScope?: string; callerHasScope?: boolean }[];
 };
-export async function status(io: Io, client: Client): Promise<void> {
+export interface StatusFlags { json?: boolean | undefined; 'fail-on'?: string | undefined }
+const FAIL_ON = ['error', 'warning', 'never'];
+
+/** What blocks sending. A failed check that blocks a channel is an error, any other failed check a warning; --fail-on picks what exits 1. */
+export async function status(io: Io, client: Client, f: StatusFlags = {}, defaultFailOn = 'never'): Promise<number> {
+  const failOn = f['fail-on'] ?? defaultFailOn;
+  if (!FAIL_ON.includes(failOn)) throw new Error(`--fail-on is one of ${FAIL_ON.join(', ')}`);
   const r = (await client.request('GET', '/v1/readiness')) as Readiness;
-  io.out(Object.entries(r.canSend).map(([k, v]) => `${k}: ${v ? 'yes' : 'no'}`).join('  '));
-  for (const c of r.checks.filter((x) => !x.ok)) {
-    io.out(`- ${c.key}${c.blocks.length ? ` (blocks ${c.blocks.join(', ')})` : ''}: ${c.fix}`);
-    if (c.api) io.out(`    ${c.api.method} ${c.api.path}${c.requiredScope && c.callerHasScope === false ? `  (needs ${c.requiredScope}: hermetica scopes request ${c.requiredScope} --reason ...)` : ''}`);
+  const level = (c: Readiness['checks'][number]) => (c.ok ? 'ok' : c.blocks.length ? 'error' : 'warning');
+  if (f.json) {
+    io.out(JSON.stringify({ canSend: r.canSend, checks: r.checks.map((c) => ({
+      id: c.key, status: level(c), detail: c.blocks.length ? `blocks ${c.blocks.join(', ')}` : '', remedy: c.ok ? null : { fix: c.fix, api: c.api ?? null, requiredScope: c.requiredScope ?? null, callerHasScope: c.callerHasScope ?? null },
+    })) }, null, 2));
+  } else {
+    io.out(Object.entries(r.canSend).map(([k, v]) => `${k}: ${v ? 'yes' : 'no'}`).join('  '));
+    for (const c of r.checks.filter((x) => !x.ok)) {
+      io.out(`- ${c.key}${c.blocks.length ? ` (blocks ${c.blocks.join(', ')})` : ''}: ${c.fix}`);
+      if (c.api) io.out(`    ${c.api.method} ${c.api.path}${c.requiredScope && c.callerHasScope === false ? `  (needs ${c.requiredScope}: hermetica scopes request ${c.requiredScope} --reason ...)` : ''}`);
+    }
+    if (r.checks.every((x) => x.ok)) io.out('Nothing blocks sending.');
   }
-  if (r.checks.every((x) => x.ok)) io.out('Nothing blocks sending.');
+  const levels = r.checks.map(level);
+  return (failOn === 'error' && levels.includes('error')) || (failOn === 'warning' && levels.some((l) => l !== 'ok')) ? 1 : 0;
 }
 
 type ScopeRequest = { id: string; status: string; approveUrl?: string };

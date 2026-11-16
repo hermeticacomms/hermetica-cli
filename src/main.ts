@@ -19,9 +19,11 @@ const atlasToken = (audience: string): Promise<string | null> => new Promise((do
 });
 
 try {
-  await run(process.argv.slice(2), { env: process.env, fetch, out: (s) => process.stdout.write(`${s}\n`), sleep: (ms) => sleep(ms), askKey, openUrl, atlasToken });
+  process.exitCode = (await run(process.argv.slice(2), { env: process.env, fetch, out: (s) => process.stdout.write(`${s}\n`), sleep: (ms) => sleep(ms), askKey, openUrl, atlasToken })) ?? 0;
 } catch (e) {
-  const msg = e instanceof ApiError ? `${e.status} ${e.code}: ${e.message}${e.details ? `\n${JSON.stringify(e.details, null, 2)}` : ''}` : e instanceof Error ? e.message : String(e);
+  const scope = e instanceof ApiError && e.status === 403 ? /Missing scope (\S+)/.exec(e.message)?.[1] : undefined;
+  const hint = scope ? `\nAsk for it: hermetica scopes request ${scope} --reason "..."` : '';
+  const msg = e instanceof ApiError ? `${e.status} ${e.code}: ${e.message}${e.details ? `\n${JSON.stringify(e.details, null, 2)}` : ''}${hint}` : e instanceof Error ? e.message : String(e);
   process.stderr.write(`${msg}\n`);
   process.exitCode = 1;
 }

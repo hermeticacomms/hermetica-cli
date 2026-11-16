@@ -24,8 +24,11 @@ export const HELP = `hermetica <command>
   login --key hm_sk_... | --paste                           store an existing secret key instead
   logout                                                    forget the stored key of this profile
   whoami                                                    who the stored key acts as, and its scopes
-  status                                                    what blocks sending, with the API call that fixes each step
-  plan -f hermetica.yaml [--prune]                          show what apply would change (config as code, YAML or JSON)
+  status [--json] [--fail-on error|warning|never]           what blocks sending, with the API call that fixes each step; --json: one
+                                                            object per check {id, status ok|error|warning, detail, remedy}
+  health [--json] [--fail-on ...]                           status that exits 1 on an error (a check blocking a channel) by default
+  plan -f hermetica.yaml [--prune]                          show what apply would change (config as code, YAML or JSON); exits 2
+                                                            when something would change, 0 when nothing would
   apply -f hermetica.yaml [--prune]                         create/update to match the file; --prune archives what it leaves out
   send --sandbox [--outcome bounce|soft-bounce|complaint]   test email to <outcome>@sandbox.hermeticor.test, no provider needed
   scopes request <scope> [...] --reason "..."               ask an owner for more scopes and wait for the answer
@@ -75,14 +78,14 @@ export async function newEvents(client: Client, lastId: string | null, query: Re
 }
 
 /** Runs one command line. Throws on bad input or an API error; main.ts prints it and sets the exit code. */
-export async function run(argv: string[], io: Io): Promise<void> {
+export async function run(argv: string[], io: Io): Promise<number | void> {
   const { values: f, positionals: [cmd, ...rest] } = parseArgs({
     args: argv, allowPositionals: true,
     options: {
       key: { type: 'string' }, url: { type: 'string' }, data: { type: 'string', short: 'd' }, to: { type: 'string' }, interval: { type: 'string' }, help: { type: 'boolean', short: 'h' },
       profile: { type: 'string' }, scopes: { type: 'string' }, app: { type: 'string' }, paste: { type: 'boolean' }, workspace: { type: 'string' }, device: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' },
       sandbox: { type: 'boolean' }, outcome: { type: 'string' }, from: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' },
-      'forward-to': { type: 'string' }, topics: { type: 'string' },
+      'forward-to': { type: 'string' }, topics: { type: 'string' }, json: { type: 'boolean' }, 'fail-on': { type: 'string' },
     },
   });
   if (!cmd || f.help || cmd === 'help') return io.out(HELP);
@@ -95,7 +98,8 @@ export async function run(argv: string[], io: Io): Promise<void> {
   const [a, b, ...more] = rest;
 
   if (cmd === 'whoami') return whoami(io, client);
-  if (cmd === 'status') return status(io, client);
+  if (cmd === 'status') return status(io, client, f);
+  if (cmd === 'health') return status(io, client, f, 'error');
   if (cmd === 'plan' || cmd === 'apply') return planOrApply(io, client, cmd === 'apply', f);
   if (cmd === 'send') return sendSandbox(io, client, f);
   if (cmd === 'scopes' && a === 'request') return requestScopes(io, client, [b, ...more].filter((x): x is string => !!x), f.reason, Math.max(1, Number(f.interval ?? 5)));

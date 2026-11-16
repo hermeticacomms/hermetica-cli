@@ -175,12 +175,19 @@ describe('hermetica cli', () => {
     }, { HERMETICA_API_KEY: 'hm_sk_env' });
     await run(['whoami'], h.io);
     expect(h.out[0]).toBe('api_key k1\nworkspace w1\nscopes settings:read');
-    await run(['status'], h.io);
+    expect(await run(['status'], h.io)).toBe(0);
     expect(h.out.slice(1)).toEqual([
       'emailTransactional: no',
       '- email_connection (blocks email_transactional): Connect a provider',
       '    POST /v1/connections  (needs connections:write: hermetica scopes request connections:write --reason ...)',
     ]);
+    expect(await run(['health', '--json'], h.io)).toBe(1); // an error-level check fails health by default
+    expect(JSON.parse(h.out.at(-1)!).checks).toEqual([
+      { id: 'email_connection', status: 'error', detail: 'blocks email_transactional', remedy: { fix: 'Connect a provider', api: { method: 'POST', path: '/v1/connections' }, requiredScope: 'connections:write', callerHasScope: false } },
+      { id: 'webhook_endpoint', status: 'ok', detail: '', remedy: null },
+    ]);
+    expect(await run(['status', '--fail-on', 'never', '--json'], h.io)).toBe(0);
+    await expect(run(['status', '--fail-on', 'sometimes'], h.io)).rejects.toThrow('--fail-on is one of');
   });
 
   it('plan sends the JSON file as a dry run and lists only changes; apply --prune applies; YAML files are parsed', async () => {
@@ -188,10 +195,10 @@ describe('hermetica cli', () => {
     const h = await harness({ 'PUT /v1/config': () => ({ dryRun: true, changes }) }, { HERMETICA_API_KEY: 'hm_sk_env' });
     const file = join(h.dir, 'hermetica.json');
     await writeFile(file, JSON.stringify({ topics: [{ channel: 'email', key: 'news', name: 'News' }] }));
-    await run(['plan', '-f', file], h.io);
+    expect(await run(['plan', '-f', file], h.io)).toBe(2); // drift
     expect(h.calls[0]!.url.search).toBe('?dryRun=true');
     expect(h.out).toEqual(['+ topic email:news', '~ list Customers (description)', 'Plan: 1 to create, 1 to update, 0 to archive, 1 unchanged.']);
-    await run(['apply', '-f', file, '--prune'], h.io);
+    expect(await run(['apply', '-f', file, '--prune'], h.io)).toBe(0);
     expect(h.calls[1]!.url.search).toBe('');
     expect(h.calls[1]!.body).toMatchObject({ prune: true, topics: [{ key: 'news' }] });
     const yml = join(h.dir, 'hermetica.yaml');
