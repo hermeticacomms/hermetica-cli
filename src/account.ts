@@ -7,15 +7,18 @@ type Granted = { key: string; prefix: string; scopes: string[]; workspaceId: str
 /** What the CLI's own commands need (status, sequences/mailboxes/leads/inbox, plan/apply, send); the approver sees and may trim them. */
 export const DEFAULT_LOGIN_SCOPES = ['settings:read', 'workflows:read', 'outbound:read', 'leads:read', 'profiles:read', 'profiles:write', 'consent:read', 'consent:write', 'integrations:read', 'integrations:write', 'messages:send'];
 
-export interface LoginFlags { key?: string | undefined; url?: string | undefined; paste?: boolean | undefined; scopes?: string | undefined; profile?: string | undefined }
+export interface LoginFlags {
+  key?: string | undefined; url?: string | undefined; paste?: boolean | undefined; scopes?: string | undefined; app?: string | undefined; profile?: string | undefined;
+  workspace?: string | undefined; device?: boolean | undefined;
+}
 
 const reasonOf = (e: unknown): string | undefined =>
   e instanceof ApiError && e.status === 400 ? (e.details as { reason?: string } | undefined)?.reason : undefined;
 
 /** OAuth-style device flow: show the code, open the browser, poll at the server's pace until approved, denied or expired. */
-export async function deviceLogin(io: Io, baseUrl: string, scopes?: string[]): Promise<Granted> {
+export async function deviceLogin(io: Io, baseUrl: string, scopes?: string[], app?: string): Promise<Granted> {
   const anon = makeClient({ apiKey: '', baseUrl }, io.fetch);
-  const d = (await anon.request('POST', '/v1/auth/device', { body: { scopes: scopes?.length ? scopes : DEFAULT_LOGIN_SCOPES } })) as Device;
+  const d = (await anon.request('POST', '/v1/auth/device', { body: { scopes: scopes?.length ? scopes : DEFAULT_LOGIN_SCOPES, ...(app ? { app } : {}) } })) as Device;
   io.out(`Open ${d.verificationUrl} and enter the code ${d.userCode}`);
   io.openUrl?.(d.verificationUrlComplete ?? d.verificationUrl);
   let every = Math.max(1, d.interval ?? 5) * 1000;
@@ -35,7 +38,24 @@ export async function deviceLogin(io: Io, baseUrl: string, scopes?: string[]): P
   throw new Error('The login code expired. Run "hermetica login" again.');
 }
 
-/** Device login by default; `--key` / `--paste` store an existing secret key instead. The key itself is never printed. */
+/** One `atlas login` covers this: Atlas mints a token for us (RFC 8693) and we swap it for a key. Null = not available, use the browser. */
+export async function atlasLogin(io: Io, baseUrl: string, scopes: string[] | undefined, app?: string, workspaceId?: string): Promise<Granted | null> {
+  if (!io.atlasToken) return null;
+  const anon = makeClient({ apiKey: '', baseUrl }, io.fetch);
+  const info = (await anon.request('GET', '/v1/auth/atlas-cli').catch(() => null)) as { available?: boolean; audience?: string | null } | null;
+  if (!info?.available || !info.audience) return null;
+  const token = await io.atlasToken(info.audience);
+  if (!token) return null;
+  try {
+    return (await anon.request('POST', '/v1/auth/atlas-cli', { body: { token, scopes: scopes?.length ? scopes : DEFAULT_LOGIN_SCOPES, ...(app ? { app } : {}), ...(workspaceId ? { workspaceId } : {}) } })) as Granted;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400) throw e; // e.g. several workspaces: the message lists them for --workspace
+    io.out(`Atlas sign-in was not accepted (${e instanceof Error ? e.message : String(e)}); using the browser instead.`);
+    return null;
+  }
+}
+
+/** Atlas sign-in when `atlas` is installed and signed in, else device login (`--device` forces it); `--key` / `--paste` store an existing secret key instead. The key itself is never printed. */
 export async function login(io: Io, f: LoginFlags): Promise<void> {
   const profile = profileOf(io.env, f.profile);
   const baseUrl = baseUrlOf(io.env, await savedBaseUrl(io.env, profile), f.url);
@@ -46,7 +66,8 @@ export async function login(io: Io, f: LoginFlags): Promise<void> {
     const file = await saveConfig({ apiKey, baseUrl }, io.env, profile);
     return io.out(`Logged in to ${ws.name ?? ws.id ?? 'the workspace'} at ${baseUrl}. Key stored in ${file} (0600), profile ${profile}.`);
   }
-  const g = await deviceLogin(io, baseUrl, f.scopes?.split(',').map((s) => s.trim()).filter(Boolean));
+  const scopes = f.scopes?.split(',').map((s) => s.trim()).filter(Boolean);
+  const g = (!f.device && (await atlasLogin(io, baseUrl, scopes, f.app, f.workspace))) || (await deviceLogin(io, baseUrl, scopes, f.app));
   const file = await saveConfig({ apiKey: g.key, baseUrl }, io.env, profile);
   io.out(`Logged in to workspace ${g.workspaceId} with key ${g.prefix}... (scopes: ${g.scopes.join(', ') || 'none'}). Stored in ${file} (0600), profile ${profile}.`);
 }

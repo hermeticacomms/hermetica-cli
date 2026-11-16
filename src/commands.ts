@@ -18,7 +18,9 @@ const LISTABLE: Record<string, string> = { ...RESOURCES, ...READ_ONLY };
 
 export const HELP = `hermetica <command>
 
-  login [--scopes a:read,b:write] [--url https://...]     sign in through the browser (device code); the key is stored, never shown
+  login [--scopes a:read,b:write] [--app <slug>] [--url ...] sign in; the key is stored, never shown. Signed in with "atlas login"? No browser:
+                                                            the Atlas sign-in is used (--workspace <id> if you have several). Else the
+                                                            browser (device code; --device forces it). --app binds the key to one product
   login --key hm_sk_... | --paste                           store an existing secret key instead
   logout                                                    forget the stored key of this profile
   whoami                                                    who the stored key acts as, and its scopes
@@ -43,7 +45,7 @@ export const HELP = `hermetica <command>
 
   --profile <name> (or HERMETICA_PROFILE) picks a stored login; HERMETICA_API_KEY and HERMETICA_API_URL override it.`;
 
-export interface Io { env: NodeJS.ProcessEnv; fetch: typeof fetch; out: (s: string) => void; sleep: (ms: number) => Promise<void>; askKey: () => Promise<string>; openUrl?: (url: string) => void }
+export interface Io { env: NodeJS.ProcessEnv; fetch: typeof fetch; out: (s: string) => void; sleep: (ms: number) => Promise<void>; askKey: () => Promise<string>; openUrl?: (url: string) => void; atlasToken?: (audience: string) => Promise<string | null> }
 
 const json = (x: unknown) => JSON.stringify(x, null, 2);
 type Page = { items?: unknown[]; nextCursor?: string | null };
@@ -78,7 +80,7 @@ export async function run(argv: string[], io: Io): Promise<void> {
     args: argv, allowPositionals: true,
     options: {
       key: { type: 'string' }, url: { type: 'string' }, data: { type: 'string', short: 'd' }, to: { type: 'string' }, interval: { type: 'string' }, help: { type: 'boolean', short: 'h' },
-      profile: { type: 'string' }, scopes: { type: 'string' }, paste: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' },
+      profile: { type: 'string' }, scopes: { type: 'string' }, app: { type: 'string' }, paste: { type: 'boolean' }, workspace: { type: 'string' }, device: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' },
       sandbox: { type: 'boolean' }, outcome: { type: 'string' }, from: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' },
       'forward-to': { type: 'string' }, topics: { type: 'string' },
     },

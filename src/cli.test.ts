@@ -110,6 +110,39 @@ describe('hermetica cli', () => {
     expect(await loadConfig(h.io.env)).toEqual({ apiKey: 'hm_sk_device_secret', baseUrl: 'https://x.test' });
   });
 
+  it('login with an atlas sign-in: no browser, the Atlas token is swapped for a key; no atlas = device login', async () => {
+    const h = await harness({
+      'GET /v1/auth/atlas-cli': () => ({ available: true, audience: 'oac_hm' }),
+      'POST /v1/auth/atlas-cli': () => ({ key: 'hm_sk_atlas_secret', prefix: 'hm_sk_atl', scopes: ['profiles:read'], workspaceId: 'w1' }),
+    });
+    const asked: string[] = [];
+    h.io.atlasToken = async (aud) => { asked.push(aud); return 'atlas.jwt.token'; };
+    await run(['login', '--url', 'https://x.test', '--scopes', 'profiles:read', '--app', 'formflow', '--workspace', 'w1'], h.io);
+    expect(asked).toEqual(['oac_hm']);
+    expect(h.calls[1]!.body).toEqual({ token: 'atlas.jwt.token', scopes: ['profiles:read'], app: 'formflow', workspaceId: 'w1' });
+    expect(h.opened).toEqual([]);
+    expect(h.out.join('\n')).not.toContain('hm_sk_atlas_secret');
+    expect(await loadConfig(h.io.env)).toEqual({ apiKey: 'hm_sk_atlas_secret', baseUrl: 'https://x.test' });
+
+    const d = await harness({
+      'GET /v1/auth/atlas-cli': () => ({ available: true, audience: 'oac_hm' }),
+      'POST /v1/auth/device': () => ({ deviceCode: 'dc1', userCode: 'ABCD-EFGH', verificationUrl: 'https://x.test/device', interval: 1, expiresIn: 60 }),
+      'POST /v1/auth/device/token': () => ({ key: 'hm_sk_x', prefix: 'hm_sk_x', scopes: ['profiles:read'], workspaceId: 'w1' }),
+    });
+    d.io.atlasToken = async () => null; // atlas not installed or not signed in
+    await run(['login', '--url', 'https://x.test', '--scopes', 'profiles:read'], d.io);
+    expect(d.calls.map((c) => `${c.method} ${c.url.pathname}`)).toEqual(['GET /v1/auth/atlas-cli', 'POST /v1/auth/device', 'POST /v1/auth/device/token']);
+  });
+
+  it('login --app asks for a key bound to that product', async () => {
+    const h = await harness({
+      'POST /v1/auth/device': () => ({ deviceCode: 'dc1', userCode: 'ABCD-EFGH', verificationUrl: 'https://x.test/device', interval: 1, expiresIn: 60 }),
+      'POST /v1/auth/device/token': () => ({ key: 'hm_sk_x', prefix: 'hm_sk_x', scopes: ['profiles:read'], workspaceId: 'w1' }),
+    });
+    await run(['login', '--url', 'https://x.test', '--scopes', 'profiles:read', '--app', 'formflow'], h.io);
+    expect(h.calls[0]!.body).toEqual({ scopes: ['profiles:read'], app: 'formflow' });
+  });
+
   it('a denied or expired device login stores nothing', async () => {
     for (const reason of ['access_denied', 'expired_token']) {
       const h = await harness({
