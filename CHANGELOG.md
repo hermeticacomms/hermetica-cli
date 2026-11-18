@@ -2,6 +2,10 @@
 
 Changes to `@hermeticacomms/cli`, newest first. Its version follows the Hermeticor API version (`info.version` of the OpenAPI document); the product changelog is at https://hermeticor.com/changelog.
 
+## 0.4.2 - 2026-11-18
+
+- `status --app <slug>` grades one product (shared resources plus its own). With `--json`, a passing check's `detail` names what it found, for example `no-reply@acme.com on connection 01a1… (app acme)`.
+
 ## 0.4.1 - 2026-11-16
 
 - `status --json`: one object per check, `{id, status: ok|error|warning, detail, remedy}`, plus `canSend`.

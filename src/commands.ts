@@ -24,7 +24,7 @@ export const HELP = `hermetica <command>
   login --key hm_sk_... | --paste                           store an existing secret key instead
   logout                                                    forget the stored key of this profile
   whoami                                                    who the stored key acts as, and its scopes
-  status [--json] [--fail-on error|warning|never]           what blocks sending, with the API call that fixes each step; --json: one
+  status [--json] [--app <slug>] [--fail-on ...]            what blocks sending, with the API call that fixes each step; --json: one
                                                             object per check {id, status ok|error|warning, detail, remedy}
   health [--json] [--fail-on ...]                           status that exits 1 on an error (a check blocking a channel) by default
   plan -f hermetica.yaml [--prune]                          show what apply would change (config as code, YAML or JSON); exits 2

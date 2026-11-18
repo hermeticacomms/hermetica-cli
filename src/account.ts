@@ -85,20 +85,21 @@ export async function whoami(io: Io, client: Client): Promise<void> {
 
 type Readiness = {
   canSend: Record<string, boolean>;
-  checks: { key: string; ok: boolean; blocks: string[]; fix: string; api?: { method: string; path: string }; requiredScope?: string; callerHasScope?: boolean }[];
+  app?: string | null;
+  checks: { key: string; ok: boolean; items?: string[]; blocks: string[]; fix: string; api?: { method: string; path: string }; requiredScope?: string; callerHasScope?: boolean }[];
 };
-export interface StatusFlags { json?: boolean | undefined; 'fail-on'?: string | undefined }
+export interface StatusFlags { json?: boolean | undefined; 'fail-on'?: string | undefined; app?: string | undefined }
 const FAIL_ON = ['error', 'warning', 'never'];
 
 /** What blocks sending. A failed check that blocks a channel is an error, any other failed check a warning; --fail-on picks what exits 1. */
 export async function status(io: Io, client: Client, f: StatusFlags = {}, defaultFailOn = 'never'): Promise<number> {
   const failOn = f['fail-on'] ?? defaultFailOn;
   if (!FAIL_ON.includes(failOn)) throw new Error(`--fail-on is one of ${FAIL_ON.join(', ')}`);
-  const r = (await client.request('GET', '/v1/readiness')) as Readiness;
+  const r = (await client.request('GET', `/v1/readiness${f.app ? `?app=${encodeURIComponent(f.app)}` : ''}`)) as Readiness;
   const level = (c: Readiness['checks'][number]) => (c.ok ? 'ok' : c.blocks.length ? 'error' : 'warning');
   if (f.json) {
-    io.out(JSON.stringify({ canSend: r.canSend, checks: r.checks.map((c) => ({
-      id: c.key, status: level(c), detail: c.blocks.length ? `blocks ${c.blocks.join(', ')}` : '', remedy: c.ok ? null : { fix: c.fix, api: c.api ?? null, requiredScope: c.requiredScope ?? null, callerHasScope: c.callerHasScope ?? null },
+    io.out(JSON.stringify({ app: r.app ?? null, canSend: r.canSend, checks: r.checks.map((c) => ({
+      id: c.key, status: level(c), detail: c.ok ? (c.items ?? []).join('; ') : c.blocks.length ? `blocks ${c.blocks.join(', ')}` : '', remedy: c.ok ? null : { fix: c.fix, api: c.api ?? null, requiredScope: c.requiredScope ?? null, callerHasScope: c.callerHasScope ?? null },
     })) }, null, 2));
   } else {
     io.out(Object.entries(r.canSend).map(([k, v]) => `${k}: ${v ? 'yes' : 'no'}`).join('  '));
