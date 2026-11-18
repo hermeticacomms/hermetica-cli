@@ -1,6 +1,6 @@
 # @hermeticacomms/cli
 
-The `hermetica` command: sign in from the terminal, keep workspace setup in a file, send sandbox test mail and call any API operation. Node 20+.
+The `hermetica` command: sign in from the terminal, keep workspace setup in a file, send sandbox test mail and call any API operation. Node 20+. The product is Hermeticor (hermeticor.com); the CLI, SDKs, headers and env vars keep its earlier name Hermetica.
 
 ```sh
 npm i -g @hermeticacomms/cli
