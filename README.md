@@ -1,9 +1,9 @@
-# @hermeticacomms/cli
+# @hermeticor/cli
 
-The `hermetica` command: sign in from the terminal, keep workspace setup in a file, send sandbox test mail and call any API operation. Node 20+. The product is Hermeticor (hermeticor.com); the CLI, SDKs, headers and env vars keep its earlier name Hermetica.
+The `hermetica` command: sign in from the terminal, keep workspace setup in a file, send sandbox test mail and call any API operation. Node 20+. Hermeticor (hermeticor.com) was called Hermetica; the command, headers and env vars keep that name. This package replaces the deprecated `@hermeticacomms/cli`.
 
 ```sh
-npm i -g @hermeticacomms/cli
+npm i -g @hermeticor/cli
 ```
 
 ## Quickstart

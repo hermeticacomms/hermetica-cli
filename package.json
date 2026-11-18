@@ -1,6 +1,6 @@
 {
-  "name": "@hermeticacomms/cli",
-  "version": "0.4.4",
+  "name": "@hermeticor/cli",
+  "version": "0.4.5",
   "description": "Hermetica command line: device login, config as code, sandbox sends, any API operation",
   "license": "MIT",
   "type": "module",

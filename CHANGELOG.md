@@ -1,6 +1,10 @@
 # Changelog
 
-Changes to `@hermeticacomms/cli`, newest first. Its version follows the Hermeticor API version (`info.version` of the OpenAPI document); the product changelog is at https://hermeticor.com/changelog.
+Changes to `@hermeticor/cli` (published as `@hermeticacomms/cli` up to 0.4.4, now deprecated), newest first. Its version follows the Hermeticor API version (`info.version` of the OpenAPI document); the product changelog is at https://hermeticor.com/changelog.
+
+## 0.4.5 - 2026-11-18
+
+- Published as `@hermeticor/cli`. `npm uninstall -g @hermeticacomms/cli && npm i -g @hermeticor/cli`; the `hermetica` command is unchanged.
 
 ## 0.4.2 - 2026-11-18
 
