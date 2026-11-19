@@ -3,8 +3,22 @@ import { parse as parseYaml } from 'yaml';
 import type { Client } from './client.ts';
 import type { Io } from './commands.ts';
 
-type Change = { kind: string; key: string; action: 'create' | 'update' | 'noop' | 'archive'; fields?: string[] };
-const SIGN = { create: '+', update: '~', archive: '-', noop: '=' } as const;
+type Change = { kind: string; key: string; action: 'create' | 'update' | 'noop' | 'archive' | 'pause'; fields?: string[] };
+const SIGN = { create: '+', update: '~', archive: '-', pause: '-', noop: '=' } as const;
+
+/** `{ "env": "VAR" }` anywhere in the file is replaced by that environment variable, so keys (a webhook preset's ingest key) stay out of the file and the API sees only the value. */
+export function resolveEnv(v: unknown, env: NodeJS.ProcessEnv, path = '$'): unknown {
+  if (Array.isArray(v)) return v.map((x, i) => resolveEnv(x, env, `${path}[${i}]`));
+  if (!v || typeof v !== 'object') return v;
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length === 1 && keys[0] === 'env' && typeof o['env'] === 'string') {
+    const value = env[o['env']];
+    if (value === undefined || value === '') throw new Error(`${path}: environment variable ${o['env']} is not set`);
+    return value;
+  }
+  return Object.fromEntries(keys.map((k) => [k, resolveEnv(o[k], env, `${path}.${k}`)]));
+}
 
 /** `.yml`/`.yaml` files are YAML, anything else JSON (the same document shape). */
 async function readConfigFile(path: string | undefined): Promise<Record<string, unknown>> {
@@ -19,12 +33,12 @@ async function readConfigFile(path: string | undefined): Promise<Record<string, 
 
 /** `plan` (dry run) or `apply` the declarative config; only differences are listed, with a count line. Returns the exit code: plan is 2 when anything would change. */
 export async function planOrApply(io: Io, client: Client, apply: boolean, f: { file?: string | undefined; prune?: boolean | undefined; 'secret-out'?: string | undefined }): Promise<number> {
-  const doc = await readConfigFile(f.file);
+  const doc = resolveEnv(await readConfigFile(f.file), io.env) as Record<string, unknown>;
   const r = (await client.request('PUT', '/v1/config', { query: apply ? {} : { dryRun: 'true' }, body: f.prune ? { ...doc, prune: true } : doc })) as { changes: (Change & { secret?: string })[] };
   await saveSecrets(io, r.changes, f['secret-out']);
   for (const c of r.changes) if (c.action !== 'noop') io.out(`${SIGN[c.action]} ${c.kind} ${c.key}${c.fields?.length ? ` (${c.fields.join(', ')})` : ''}`);
   const n = (a: Change['action']) => r.changes.filter((c) => c.action === a).length;
-  io.out(`${apply ? 'Applied' : 'Plan'}: ${n('create')} to create, ${n('update')} to update, ${n('archive')} to archive, ${n('noop')} unchanged.`);
+  io.out(`${apply ? 'Applied' : 'Plan'}: ${n('create')} to create, ${n('update')} to update, ${n('archive')} to archive, ${n('pause') ? `${n('pause')} to pause, ` : ''}${n('noop')} unchanged.`);
   return !apply && r.changes.some((c) => c.action !== 'noop') ? 2 : 0;
 }
 

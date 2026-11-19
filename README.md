@@ -30,12 +30,39 @@ Missing a scope? `hermetica scopes request connections:write --reason "connect S
   "topics": [{ "channel": "email", "key": "product-news", "name": "Product news" }],
   "fields": [{ "key": "plan", "label": "Plan", "type": "text" }],
   "lists": [{ "name": "Customers", "topicKey": "product-news" }],
+  "segments": [{ "key": "trials", "name": "Trials", "definition": { "type": "group", "op": "and", "children": [{ "type": "profile_property", "field": "attributes.plan", "predicate": { "valueType": "string", "op": "eq", "value": "trial" } }] } }],
+  "templates": [{ "key": "welcome", "name": "Welcome", "kind": "html", "version": { "subject": "Welcome", "body": { "kind": "html", "html": "<p>Hi {{ profile.firstName }}</p>" } } }],
+  "transactionalDefinitions": [{ "key": "receipt", "name": "Receipt", "templateKey": "welcome" }],
+  "journeys": [{ "key": "onboarding", "name": "Onboarding", "status": "live", "definition": { "triggers": [{ "type": "api" }], "graph": { "start": "wait", "nodes": [{ "id": "wait", "type": "delay", "config": { "duration": { "amount": 1, "unit": "days" } } }, { "id": "done", "type": "end", "config": {} }], "edges": [{ "id": "e1", "source": "wait", "sourceHandle": "next", "target": "done" }] } } }],
   "webhookEndpoints": [{ "url": "https://example.com/hooks/hermetica", "topics": ["profile.*"], "secret": "<32+ random characters>" }],
+  "senders": [{ "connection": "main", "fromEmail": "hello@example.com" }],
+  "sendingDomains": [{ "domain": "example.com", "connection": "main" }],
+  "consentSettings": { "cookieMunchSync": true },
+  "conversions": [{ "label": "Trial started", "event": "trial_started" }],
+  "postalAddresses": [{ "label": "Main", "company": "Example Ltd", "line1": "1 Main St", "city": "Springfield", "country": "US", "isDefault": true }],
   "postalAddress": "1 Main St, Springfield"
 }
 ```
 
-Topics match on `channel` + `key`, fields on `key`, lists on `name`, webhook endpoints on `url`. Only the properties written in the file are compared and changed. Nothing is deleted: `apply --prune` archives the topics, fields and lists (and disables the webhook endpoints) that a section of the file leaves out; sections not in the file are left alone. A webhook `secret` you choose is used on create, replaces the current one when it differs, and is never shown back (the plan prints `secret` only), so verify deliveries with the value from your own secret store. Leave `secret` out and the endpoint gets a generated one, shown once: `apply --secret-out ~/.config/<app>/hermetica-secrets.env` appends it as `HERMETICA_WEBHOOK_SECRET=…` to that file (mode 0600) instead of printing it. Keys may be read from `HERMETICA_API_KEY` or `HERMETICA_KEY`, and the URL from `HERMETICA_API_URL` or `HERMETICA_URL`. `senders` (`[{ "connection": "main", "fromEmail": "hello@example.com" }]`) declares From addresses per connection; the plan shows whether each is verified.
+How each section is matched: topics on `channel` + `key`, fields on `key`, lists on `name`, webhook endpoints on `url`, senders on `connection` + address or number, sending domains on `domain`, conversions on `label`, saved postal addresses on `label` + `app` (none = shared). Segments, templates, transactional definitions and journeys on a `key` you choose: the file stores it on the item it creates, so renaming one keeps it matched (items made in the app have no key and are never touched). A transactional definition names its template by that key (`templateKey`), and anywhere in a journey's `definition` a step or trigger may write `templateKey` / `segmentKey` instead of `templateId` / `segmentId`, so the file works in any workspace (an unknown key is a 400 naming the step).
+
+Only the properties written in the file are compared and changed. A template's `version` is its current content, compared as a whole (`subject`, `preheader` and `textBody` count as empty when left out); a change saves a new version. A journey's `definition` is what the workflows API takes; each part written (`graph`, `triggers`, `settings`) is compared whole, and a change shows per step, such as `definition.graph.nodes.wait1`. A webhook step's `signingSecret` is compared with the stored one without being shown: a different one is an update of that step. A journey's `status: live` publishes its draft (again after a change), `paused` pauses it; with no `status` only the draft changes. `consentSettings` is merged into the stored settings, never replaced (fields other than `cookieMunchSync` need a signed-in owner or admin). A sending domain is added at the named connection, and a changed `purpose` is an update; DNS is not published for you, and the plan shows whether each domain and sender is verified.
+
+Nothing is deleted: `apply --prune` archives the topics, fields, lists, segments, templates and transactional definitions a section of the file leaves out, disables such webhook endpoints, removes such conversions from the named list (conversions already recorded stay), and pauses a live journey (a draft one is archived). Prune only touches segments, templates, definitions and journeys a file created. Senders, sending domains and saved postal addresses are never pruned. Sections not in the file are left alone.
+
+`plan` exits 2 when anything would change and 0 when nothing would, so CI can fail on drift.
+
+A webhook `secret` you choose is used on create, replaces the current one when it differs, and is never shown back (the plan prints `secret` only), so verify deliveries with the value from your own secret store. Leave `secret` out and the endpoint gets a generated one, shown once: `apply --secret-out ~/.config/<app>/hermetica-secrets.env` appends it as `HERMETICA_WEBHOOK_SECRET=…` to that file (mode 0600) instead of printing it. Keys may be read from `HERMETICA_API_KEY` or `HERMETICA_KEY`, and the URL from `HERMETICA_API_URL` or `HERMETICA_URL`.
+
+Keep keys out of the file: any value written as `{ "env": "VAR_NAME" }` is replaced by that environment variable before the file is sent (an unset one stops the command). For a preset webhook endpoint:
+
+```json
+{ "webhookEndpoints": [{ "url": "https://watchtower.example.com/ingest", "topics": ["message.*"], "preset": { "kind": "watchtower", "environment": "production", "ingestKey": { "env": "WATCHTOWER_INGEST_KEY" } } }] }
+```
+
+A different ingest key is rotated to (the plan prints `preset.ingestKey`, never the value).
+
+Each section needs its area's read scope to plan and write scope to apply (segments, templates, messages for transactional definitions, workflows for journeys, connections for senders and sending domains, templates for saved postal addresses, consent for consent settings, `analytics:read` / `settings:write` for conversions). A key bound to an app gets its app's slice: what it creates belongs to its app, prune touches only its app's items, and it cannot change shared items or another app's. With `connections:own` it may declare senders and sending domains on connections bound to its app (another connection is a 403 naming it). It may declare its own app's `postalAddresses` (created with its app; `isDefault` picks the one its footers print); another app's is a 403. `postalAddress` (the workspace address), `consentSettings`, `conversions` and `transactionalDefinitions` are workspace-wide and need a key that is not bound to an app.
 
 ## Test a webhook receiver locally
 

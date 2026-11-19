@@ -209,6 +209,17 @@ describe('hermetica cli', () => {
     await expect(run(['plan', '-f', yml], h.io)).rejects.toThrow('not valid YAML');
   });
 
+  it('plan resolves { "env": "VAR" } from the environment before sending (the API never sees the file\'s reference), and fails on an unset one', async () => {
+    const h = await harness({ 'PUT /v1/config': () => ({ dryRun: true, changes: [] }) }, { HERMETICA_API_KEY: 'hm_sk_env', WT_INGEST: 'wt_ingest_123456' });
+    const file = join(h.dir, 'hermetica.json');
+    const ep = (ingestKey: unknown) => ({ webhookEndpoints: [{ url: 'https://wt.example.com/in', topics: ['*'], preset: { kind: 'watchtower', environment: 'prod', ingestKey } }] });
+    await writeFile(file, JSON.stringify(ep({ env: 'WT_INGEST' })));
+    expect(await run(['plan', '-f', file], h.io)).toBe(0); // nothing would change
+    expect(h.calls[0]!.body).toEqual(ep('wt_ingest_123456'));
+    await writeFile(file, JSON.stringify(ep({ env: 'NOT_SET_ANYWHERE' })));
+    await expect(run(['plan', '-f', file], h.io)).rejects.toThrow('NOT_SET_ANYWHERE is not set');
+  });
+
   it('send --sandbox mails <outcome>@sandbox.hermeticor.test through send-raw and refuses other addresses', async () => {
     const h = await harness({ 'POST /v1/transactional/send-raw': () => ({ results: [] }) }, { HERMETICA_API_KEY: 'hm_sk_env' });
     await run(['send', '--sandbox', '--outcome', 'bounce'], h.io);
