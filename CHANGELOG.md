@@ -2,6 +2,12 @@
 
 Changes to `@hermeticor/cli` (published as `@hermeticacomms/cli` up to 0.4.4, now deprecated), newest first. Its version follows the Hermeticor API version (`info.version` of the OpenAPI document); the product changelog is at https://hermeticor.com/changelog.
 
+## 0.4.6 - 2026-11-19
+
+- `apply --secret-out <file>`: the signing secret of each webhook endpoint the apply creates (when the file sets none) is appended to `<file>` as `HERMETICA_WEBHOOK_SECRET=…`, mode 0600. Without the flag it is printed once.
+- Planning and applying `webhookEndpoints` needs `webhooks:read` / `webhooks:write`, the scopes the webhook routes use (it asked for `integrations:*`).
+- Reads `HERMETICA_KEY` and `HERMETICA_URL` as well as `HERMETICA_API_KEY` and `HERMETICA_API_URL`.
+
 ## 0.4.5 - 2026-11-18
 
 - Published as `@hermeticor/cli`. `npm uninstall -g @hermeticacomms/cli && npm i -g @hermeticor/cli`; the `hermetica` command is unchanged.

@@ -29,7 +29,8 @@ export const HELP = `hermetica <command>
   health [--json] [--fail-on ...]                           status that exits 1 on an error (a check blocking a channel) by default
   plan -f hermetica.yaml [--prune]                          show what apply would change (config as code, YAML or JSON); exits 2
                                                             when something would change, 0 when nothing would
-  apply -f hermetica.yaml [--prune]                         create/update to match the file; --prune archives what it leaves out
+  apply -f hermetica.yaml [--prune] [--secret-out <file>]   create/update to match the file; --prune archives what it leaves out;
+                                                            --secret-out appends new endpoints' signing secrets to <file> (0600)
   send --sandbox [--outcome bounce|soft-bounce|complaint]   test email to <outcome>@sandbox.hermeticor.test, no provider needed
   scopes request <scope> [...] --reason "..."               ask an owner for more scopes and wait for the answer
   <resource> list [key=value ...]                            resources: ${Object.keys(RESOURCES).join(', ')}
@@ -46,7 +47,7 @@ export const HELP = `hermetica <command>
   openapi list [search]                                      operations of the server's OpenAPI document
   openapi <operationId> [key=value ...] [--data ...]          call any operation: path {params} first, the rest as query
 
-  --profile <name> (or HERMETICA_PROFILE) picks a stored login; HERMETICA_API_KEY and HERMETICA_API_URL override it.`;
+  --profile <name> (or HERMETICA_PROFILE) picks a stored login; HERMETICA_API_KEY (or HERMETICA_KEY) and HERMETICA_API_URL (or HERMETICA_URL) override it.`;
 
 export interface Io { env: NodeJS.ProcessEnv; fetch: typeof fetch; out: (s: string) => void; sleep: (ms: number) => Promise<void>; askKey: () => Promise<string>; openUrl?: (url: string) => void; atlasToken?: (audience: string) => Promise<string | null> }
 
@@ -83,7 +84,7 @@ export async function run(argv: string[], io: Io): Promise<number | void> {
     args: argv, allowPositionals: true,
     options: {
       key: { type: 'string' }, url: { type: 'string' }, data: { type: 'string', short: 'd' }, to: { type: 'string' }, interval: { type: 'string' }, help: { type: 'boolean', short: 'h' },
-      profile: { type: 'string' }, scopes: { type: 'string' }, app: { type: 'string' }, paste: { type: 'boolean' }, workspace: { type: 'string' }, device: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' },
+      profile: { type: 'string' }, scopes: { type: 'string' }, app: { type: 'string' }, paste: { type: 'boolean' }, workspace: { type: 'string' }, device: { type: 'boolean' }, file: { type: 'string', short: 'f' }, prune: { type: 'boolean' }, 'secret-out': { type: 'string' },
       sandbox: { type: 'boolean' }, outcome: { type: 'string' }, from: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' },
       'forward-to': { type: 'string' }, topics: { type: 'string' }, json: { type: 'boolean' }, 'fail-on': { type: 'string' },
     },

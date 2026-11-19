@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { parse as parseYaml } from 'yaml';
 import type { Client } from './client.ts';
 import type { Io } from './commands.ts';
@@ -18,13 +18,28 @@ async function readConfigFile(path: string | undefined): Promise<Record<string, 
 }
 
 /** `plan` (dry run) or `apply` the declarative config; only differences are listed, with a count line. Returns the exit code: plan is 2 when anything would change. */
-export async function planOrApply(io: Io, client: Client, apply: boolean, f: { file?: string | undefined; prune?: boolean | undefined }): Promise<number> {
+export async function planOrApply(io: Io, client: Client, apply: boolean, f: { file?: string | undefined; prune?: boolean | undefined; 'secret-out'?: string | undefined }): Promise<number> {
   const doc = await readConfigFile(f.file);
-  const r = (await client.request('PUT', '/v1/config', { query: apply ? {} : { dryRun: 'true' }, body: f.prune ? { ...doc, prune: true } : doc })) as { changes: Change[] };
+  const r = (await client.request('PUT', '/v1/config', { query: apply ? {} : { dryRun: 'true' }, body: f.prune ? { ...doc, prune: true } : doc })) as { changes: (Change & { secret?: string })[] };
+  await saveSecrets(io, r.changes, f['secret-out']);
   for (const c of r.changes) if (c.action !== 'noop') io.out(`${SIGN[c.action]} ${c.kind} ${c.key}${c.fields?.length ? ` (${c.fields.join(', ')})` : ''}`);
   const n = (a: Change['action']) => r.changes.filter((c) => c.action === a).length;
   io.out(`${apply ? 'Applied' : 'Plan'}: ${n('create')} to create, ${n('update')} to update, ${n('archive')} to archive, ${n('noop')} unchanged.`);
   return !apply && r.changes.some((c) => c.action !== 'noop') ? 2 : 0;
+}
+
+/** HM-I4: signing secrets of endpoints this apply created are shown once: to a 0600 env file with --secret-out, else printed once. */
+async function saveSecrets(io: Io, changes: { key: string; secret?: string }[], file?: string): Promise<void> {
+  const made = changes.filter((c) => c.secret);
+  if (!made.length) return;
+  if (!file) {
+    for (const c of made) io.out(`secret for ${c.key}: ${c.secret} (shown once; next time pass --secret-out <file> to save it instead)`);
+    return;
+  }
+  const lines = made.map((c, i) => `# webhook endpoint ${c.key}\nHERMETICA_WEBHOOK_SECRET${i ? `_${i + 1}` : ''}=${c.secret}`);
+  await writeFile(file, `${lines.join('\n')}\n`, { mode: 0o600, flag: 'a' });
+  await chmod(file, 0o600);
+  io.out(`Saved ${made.length} signing secret${made.length > 1 ? 's' : ''} to ${file} (mode 0600).`);
 }
 
 export const SANDBOX_DOMAIN = 'sandbox.hermeticor.test';

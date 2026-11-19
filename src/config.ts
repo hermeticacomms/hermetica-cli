@@ -20,11 +20,11 @@ async function readAll(env: NodeJS.ProcessEnv): Promise<Credentials> {
 /** One profile's login, overridden by HERMETICA_API_KEY / HERMETICA_API_URL. Null when neither gives a key. */
 export async function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = profileOf(env)): Promise<CliConfig | null> {
   const saved = (await readAll(env))[profile] ?? {};
-  const apiKey = env.HERMETICA_API_KEY || saved.apiKey;
+  const apiKey = env.HERMETICA_API_KEY || env.HERMETICA_KEY || saved.apiKey;
   return apiKey ? { apiKey, baseUrl: baseUrlOf(env, saved.baseUrl) } : null;
 }
 
-export const baseUrlOf = (env: NodeJS.ProcessEnv, saved?: string, flag?: string): string => (flag || env.HERMETICA_API_URL || saved || DEFAULT_URL).replace(/\/+$/, '');
+export const baseUrlOf = (env: NodeJS.ProcessEnv, saved?: string, flag?: string): string => (flag || env.HERMETICA_API_URL || env.HERMETICA_URL || saved || DEFAULT_URL).replace(/\/+$/, '');
 export const savedBaseUrl = async (env: NodeJS.ProcessEnv, profile: string): Promise<string | undefined> => (await readAll(env))[profile]?.baseUrl;
 
 /** The key is a secret: the directory is 0700 and the file 0600, set again on every write in case it existed with wider modes. */
